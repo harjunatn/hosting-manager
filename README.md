@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Hosting Subscription Management
 
-## Getting Started
+Internal admin app and client portal for yearly hosting subscriptions. Replaces the spreadsheet workflow: client → hosting → subscription → invoice → bank-transfer proof → admin verification → renewal.
 
-First, run the development server:
+## Stack
+
+Next.js App Router, TypeScript, Tailwind CSS, shadcn/ui, Supabase (Postgres, Auth, Storage), Zod, Vitest, Playwright.
+
+See [`ROADMAP.md`](ROADMAP.md) for what is still missing before this can replace the spreadsheet.
+
+There is no separate backend. Mutations run as Next.js server actions against Supabase with Row Level Security.
+
+## Setup
+
+Create a Supabase project (cloud is fine). Then:
+
+1. Apply [`supabase/migrations/20260828100000_init.sql`](supabase/migrations/20260828100000_init.sql) to the database.
+2. Optionally run [`supabase/seed.sql`](supabase/seed.sql) for demo users and clients.
+3. Create a private Storage bucket named `payment-receipts` if the migration did not.
+4. Copy env and start the app:
+
+```bash
+cp .env.example .env.local
+```
+
+Fill in `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` from the project. Keep `SUPABASE_SERVICE_ROLE_KEY` out of the browser; it is only for seed/E2E.
+
+```bash
+npm install
+npm run dev
+```
+
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). `supabase start` is optional local Docker, not required.
+
+Seed logins (password for all: `password123`):
+
+| Role   | Email                 | Destination |
+|--------|-----------------------|-------------|
+| Admin  | `admin@example.com`   | `/admin`    |
+| Client | `shiying@example.com`  | `/portal`   |
+| Client | `bran@example.com`    | `/portal`   |
+| Client | `somchai@example.com`  | `/portal`   |
+
+Public signup is disabled. Portal users are created in seed SQL (or manually in the Supabase dashboard). There is no invite UI in the MVP.
+
+## Scripts
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npm run typecheck
+npm run test
+npm run e2e
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Playwright E2E needs a running app plus a Supabase project whose keys are in `.env.local`. Install a browser once with `npx playwright install chromium`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Invoice providers
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+MVP invoices go through `MockInvoiceProvider`. Routing is already split by currency so later:
 
-## Learn More
+- SGD → Zoho Books
+- THB → FlowAccount
 
-To learn more about Next.js, take a look at the following resources:
+Internal invoice numbers stay `INV-YYYY-NNNN`. Mock external IDs look like `MOCK-ZOHO-000001` / `MOCK-FLOWACCOUNT-000001`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Security notes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Never put the Supabase service role key in client code. It is only for seed/E2E provisioning.
+- Payment receipts live in the private `payment-receipts` bucket and are viewed via signed URLs.
+- Clients can only read their own company data (RLS).

@@ -1,0 +1,7 @@
+import { expect, test } from "@playwright/test";
+
+test("login page renders", async ({ page }) => {
+  await page.goto("/login");
+  await expect(page.getByTestId("login-email")).toBeVisible();
+  await expect(page.getByTestId("login-submit")).toBeVisible();
+});
