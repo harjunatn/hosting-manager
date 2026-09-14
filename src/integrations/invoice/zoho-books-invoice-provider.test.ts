@@ -273,6 +273,214 @@ describe("ZohoBooksInvoiceProvider", () => {
     })).toBe(true);
   });
 
+  it("records a bank transfer against the Zoho invoice", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          access_token: "access-token",
+          api_domain: "https://www.zohoapis.com",
+          expires_in: 3600,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ code: 0, customer_payments: [] }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          invoice: {
+            invoice_id: "invoice-id",
+            invoice_number: "TRM-006190",
+            status: "draft",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          message: "Invoice status has been changed to Sent.",
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          payment: {
+            payment_id: "payment-id",
+            reference_number: "payment:invoice-id",
+          },
+        }),
+      );
+    const provider = new ZohoBooksInvoiceProvider(config, fetchMock);
+
+    await expect(
+      provider.recordPayment({
+        externalInvoiceId: "invoice-id",
+        externalCustomerId: "contact-id",
+        amount: "150.00",
+        date: "2026-09-14",
+        referenceNumber: "payment:invoice-id",
+        description: "Admin-confirmed payment for TRM-006190",
+      }),
+    ).resolves.toEqual({ externalPaymentId: "payment-id" });
+
+    expect(fetchMock.mock.calls[1]?.[0]).toContain(
+      "/books/v3/customerpayments?organization_id=organization-id&reference_number=payment%3Ainvoice-id",
+    );
+    expect(fetchMock.mock.calls[2]?.[0]).toContain(
+      "/books/v3/invoices/invoice-id?organization_id=organization-id",
+    );
+    expect(fetchMock.mock.calls[3]?.[0]).toContain(
+      "/books/v3/invoices/invoice-id/status/sent?organization_id=organization-id",
+    );
+    expect((fetchMock.mock.calls[3]?.[1] as RequestInit).method).toBe("POST");
+    const createPaymentRequest = fetchMock.mock.calls[4];
+    expect(createPaymentRequest?.[0]).toContain(
+      "/books/v3/customerpayments?organization_id=organization-id",
+    );
+    expect(
+      JSON.parse(String((createPaymentRequest?.[1] as RequestInit).body)),
+    ).toEqual({
+      customer_id: "contact-id",
+      payment_mode: "banktransfer",
+      amount: 150,
+      date: "2026-09-14",
+      reference_number: "payment:invoice-id",
+      description: "Admin-confirmed payment for TRM-006190",
+      invoices: [{ invoice_id: "invoice-id", amount_applied: 150 }],
+    });
+  });
+
+  it("reuses a Zoho payment with the same reference", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          access_token: "access-token",
+          api_domain: "https://www.zohoapis.com",
+          expires_in: 3600,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          customer_payments: [
+            {
+              payment_id: "existing-payment-id",
+              reference_number: "payment:invoice-id",
+            },
+          ],
+        }),
+      );
+    const provider = new ZohoBooksInvoiceProvider(config, fetchMock);
+
+    await expect(
+      provider.recordPayment({
+        externalInvoiceId: "invoice-id",
+        externalCustomerId: "contact-id",
+        amount: "150.00",
+        date: "2026-09-14",
+        referenceNumber: "payment:invoice-id",
+      }),
+    ).resolves.toEqual({ externalPaymentId: "existing-payment-id" });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("marks draft quotation and invoice documents as sent", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          access_token: "access-token",
+          api_domain: "https://www.zohoapis.com",
+          expires_in: 3600,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          invoice: {
+            invoice_id: "invoice-id",
+            invoice_number: "TRM-006190",
+            status: "draft",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          message: "Invoice status has been changed to Sent.",
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          estimate: {
+            estimate_id: "estimate-id",
+            estimate_number: "EST-00042",
+            status: "draft",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          message: "Estimate status has been changed to Sent.",
+        }),
+      );
+    const provider = new ZohoBooksInvoiceProvider(config, fetchMock);
+
+    await provider.markInvoiceSent("invoice-id");
+    await provider.markQuotationSent("estimate-id");
+
+    expect(fetchMock.mock.calls[2]?.[0]).toContain(
+      "/books/v3/invoices/invoice-id/status/sent?organization_id=organization-id",
+    );
+    expect((fetchMock.mock.calls[2]?.[1] as RequestInit).method).toBe("POST");
+    expect(fetchMock.mock.calls[4]?.[0]).toContain(
+      "/books/v3/estimates/estimate-id/status/sent?organization_id=organization-id",
+    );
+    expect((fetchMock.mock.calls[4]?.[1] as RequestInit).method).toBe("POST");
+  });
+
+  it("does not resend documents that already left draft status", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          access_token: "access-token",
+          api_domain: "https://www.zohoapis.com",
+          expires_in: 3600,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          invoice: {
+            invoice_id: "invoice-id",
+            invoice_number: "TRM-006190",
+            status: "sent",
+          },
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          estimate: {
+            estimate_id: "estimate-id",
+            estimate_number: "EST-00042",
+            status: "invoiced",
+          },
+        }),
+      );
+    const provider = new ZohoBooksInvoiceProvider(config, fetchMock);
+
+    await provider.markInvoiceSent("invoice-id");
+    await provider.markQuotationSent("estimate-id");
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("downloads quotation and invoice PDFs", async () => {
     const invoicePdf = new Uint8Array([37, 80, 68, 70, 1]).buffer;
     const quotationPdf = new Uint8Array([37, 80, 68, 70, 2]).buffer;

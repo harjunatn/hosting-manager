@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getZohoBooksInvoiceProvider } from "@/integrations/invoice/get-invoice-provider";
+import { ZOHO_PROVIDER } from "@/integrations/invoice/zoho-books-invoice-provider";
 import { writeAuditLog } from "@/modules/audit/log";
 import { requireAdmin } from "@/modules/auth/session";
 import {
@@ -127,4 +128,45 @@ export async function sendInvoiceAction(invoiceId: string) {
   revalidatePath(`/admin/invoices/${invoiceId}`);
   revalidatePath("/admin/invoices");
   redirect(`/admin/invoices/${invoiceId}`);
+}
+
+export async function syncInvoiceZohoSentStatusAction(
+  invoiceId: string,
+): Promise<InvoiceActionState> {
+  await requireAdmin();
+  const invoice = await getInvoice(invoiceId);
+  if (!invoice) {
+    return { error: "Invoice not found." };
+  }
+  if (invoice.status === "DRAFT") {
+    return { error: "Send the documents before marking them as sent in Zoho." };
+  }
+  if (invoice.provider !== ZOHO_PROVIDER || !invoice.external_invoice_id) {
+    return { error: "This invoice is not linked to Zoho Books." };
+  }
+
+  const zoho = getZohoBooksInvoiceProvider();
+  if (!zoho?.markInvoiceSent || !zoho.markQuotationSent) {
+    return { error: "Zoho Books status synchronization is not configured." };
+  }
+
+  try {
+    const updates: Promise<void>[] = [
+      zoho.markInvoiceSent(invoice.external_invoice_id),
+    ];
+    if (invoice.external_quotation_id) {
+      updates.push(zoho.markQuotationSent(invoice.external_quotation_id));
+    }
+    await Promise.all(updates);
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Could not synchronize the Zoho document statuses.",
+    };
+  }
+
+  revalidatePath(`/admin/invoices/${invoice.id}`);
+  return null;
 }

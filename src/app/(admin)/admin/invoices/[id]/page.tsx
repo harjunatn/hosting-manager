@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { InvoiceDocument } from "@/components/invoice-document";
 import { SendInvoiceButton } from "@/components/send-invoice-button";
 import { StatusBadge } from "@/components/status-badge";
+import { SyncZohoStatusButton } from "@/components/sync-zoho-status-button";
 import { Button } from "@/components/ui/button";
 import {
   getClient,
@@ -46,6 +47,11 @@ export default async function InvoiceDetailPage({
           <div className="flex gap-2">
             {invoice.status === "DRAFT" ? (
               <SendInvoiceButton invoiceId={invoice.id} />
+            ) : null}
+            {invoice.status !== "DRAFT" &&
+            invoice.provider === ZOHO_PROVIDER &&
+            invoice.external_invoice_id ? (
+              <SyncZohoStatusButton invoiceId={invoice.id} />
             ) : null}
             {invoice.provider === ZOHO_PROVIDER &&
             invoice.external_invoice_id ? (

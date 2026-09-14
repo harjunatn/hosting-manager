@@ -34,11 +34,29 @@ export type CreateQuotationAndInvoiceResult = CreateInvoiceResult & {
   quotationUrl?: string | null;
 };
 
+export type RecordInvoicePaymentInput = {
+  externalInvoiceId: string;
+  externalCustomerId: string;
+  amount: string;
+  date: string;
+  referenceNumber: string;
+  description?: string;
+};
+
+export type RecordInvoicePaymentResult = {
+  externalPaymentId: string;
+};
+
 export interface InvoiceProvider {
   createInvoice(input: CreateInvoiceInput): Promise<CreateInvoiceResult>;
   createQuotationAndInvoice?(
     input: CreateInvoiceInput,
   ): Promise<CreateQuotationAndInvoiceResult>;
+  recordPayment?(
+    input: RecordInvoicePaymentInput,
+  ): Promise<RecordInvoicePaymentResult>;
+  markInvoiceSent?(externalInvoiceId: string): Promise<void>;
+  markQuotationSent?(externalQuotationId: string): Promise<void>;
   getInvoicePdf?(externalInvoiceId: string): Promise<ArrayBuffer>;
   getQuotationPdf?(externalQuotationId: string): Promise<ArrayBuffer>;
 }

@@ -3,18 +3,77 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import {
-  RECEIPT_BUCKET,
-  RECEIPT_MAX_BYTES,
-} from "@/lib/constants";
+import { getZohoBooksInvoiceProvider } from "@/integrations/invoice/get-invoice-provider";
+import { ZOHO_PROVIDER } from "@/integrations/invoice/zoho-books-invoice-provider";
+import { RECEIPT_BUCKET } from "@/lib/constants";
+import type { Invoice } from "@/lib/supabase/database.types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { writeAuditLog } from "@/modules/audit/log";
 import { requireAdmin, requireClient } from "@/modules/auth/session";
-import { getInvoice, getPayment } from "@/modules/clients/queries";
+import {
+  getClient,
+  getInvoice,
+  getPayment,
+  getSubscription,
+} from "@/modules/clients/queries";
 import { rejectPaymentSchema } from "@/modules/clients/schemas";
 import { validateReceiptFile } from "@/modules/payments/receipt-validation";
+import { toDateOnlyString } from "@/modules/subscriptions/status";
 
 export type PaymentActionState = { error: string } | null;
+
+async function recordInvoicePaymentInZoho(invoice: Invoice) {
+  if (invoice.status !== "SENT") {
+    throw new Error("Only sent invoices can be marked as paid.");
+  }
+  if (invoice.provider !== ZOHO_PROVIDER || !invoice.external_invoice_id) {
+    throw new Error("This invoice is not linked to a Zoho Books invoice.");
+  }
+
+  const [client, subscription] = await Promise.all([
+    getClient(invoice.client_id),
+    getSubscription(invoice.subscription_id),
+  ]);
+  if (!client?.zoho_contact_id) {
+    throw new Error("The client is not linked to a Zoho Books contact.");
+  }
+  if (!subscription) {
+    throw new Error("Subscription not found.");
+  }
+  if (
+    invoice.billing_period_end &&
+    invoice.billing_period_end !== subscription.current_period_end
+  ) {
+    throw new Error(
+      "This invoice belongs to an outdated subscription period and cannot renew it again.",
+    );
+  }
+
+  const provider = getZohoBooksInvoiceProvider();
+  if (!provider?.recordPayment) {
+    throw new Error("Zoho Books payment recording is not configured.");
+  }
+
+  return provider.recordPayment({
+    externalInvoiceId: invoice.external_invoice_id,
+    externalCustomerId: client.zoho_contact_id,
+    amount: invoice.total,
+    date: toDateOnlyString(new Date()),
+    referenceNumber: `payment:${invoice.id}`,
+    description: `Admin-confirmed payment for ${invoice.invoice_number}`,
+  });
+}
+
+async function completeLocalInvoicePayment(
+  invoiceId: string,
+  externalPaymentId: string,
+) {
+  const supabase = await createServerSupabaseClient();
+  return supabase.rpc("mark_invoice_paid", {
+    p_invoice_id: invoiceId,
+    p_external_payment_id: externalPaymentId,
+  });
+}
 
 export async function submitPaymentReceiptAction(
   invoiceId: string,
@@ -117,17 +176,86 @@ export async function submitPaymentReceiptAction(
 
 export async function confirmPaymentAction(paymentId: string) {
   await requireAdmin();
-  const supabase = await createServerSupabaseClient();
-  const { error } = await supabase.rpc("confirm_bank_transfer_payment", {
-    p_payment_id: paymentId,
-  });
-
-  if (error) {
-    return { error: error.message };
+  const payment = await getPayment(paymentId);
+  if (!payment || payment.status !== "PENDING_VERIFICATION") {
+    return { error: "Payment is not awaiting verification." };
+  }
+  const invoice = await getInvoice(payment.invoice_id);
+  if (!invoice) {
+    return { error: "Invoice not found." };
   }
 
+  let externalPaymentId: string;
+  try {
+    const result = await recordInvoicePaymentInZoho(invoice);
+    externalPaymentId = result.externalPaymentId;
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Could not record the payment in Zoho Books.",
+    };
+  }
+
+  const { error } = await completeLocalInvoicePayment(
+    invoice.id,
+    externalPaymentId,
+  );
+  if (error) {
+    return {
+      error: `Zoho was updated, but the local payment could not be completed: ${error.message}`,
+    };
+  }
+
+  revalidatePath("/admin");
   revalidatePath("/admin/payments");
   revalidatePath(`/admin/payments/${paymentId}`);
+  revalidatePath("/admin/invoices");
+  revalidatePath(`/admin/invoices/${invoice.id}`);
+  revalidatePath("/admin/renewals");
+  redirect(`/admin/payments/${paymentId}`);
+}
+
+export async function markInvoicePaidAction(
+  invoiceId: string,
+): Promise<PaymentActionState> {
+  await requireAdmin();
+  const invoice = await getInvoice(invoiceId);
+  if (!invoice) {
+    return { error: "Invoice not found." };
+  }
+
+  let externalPaymentId: string;
+  try {
+    const result = await recordInvoicePaymentInZoho(invoice);
+    externalPaymentId = result.externalPaymentId;
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error
+          ? error.message
+          : "Could not record the payment in Zoho Books.",
+    };
+  }
+
+  const { data: paymentId, error } = await completeLocalInvoicePayment(
+    invoice.id,
+    externalPaymentId,
+  );
+  if (error || !paymentId) {
+    return {
+      error:
+        error?.message ??
+        "Zoho was updated, but the local payment could not be completed. Retry safely.",
+    };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/payments");
+  revalidatePath("/admin/invoices");
+  revalidatePath(`/admin/invoices/${invoice.id}`);
+  revalidatePath("/admin/renewals");
   redirect(`/admin/payments/${paymentId}`);
 }
 

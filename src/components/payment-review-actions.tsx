@@ -3,7 +3,6 @@
 import { useActionState, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/submit-button";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,9 +54,9 @@ export function PaymentReviewActions({ paymentId }: { paymentId: string }) {
             }
           }}
         >
-          <Button type="submit" data-testid="confirm-payment">
+          <SubmitButton data-testid="confirm-payment">
             Confirm payment
-          </Button>
+          </SubmitButton>
         </form>
         <SubmitButton
           form={rejectFormId}

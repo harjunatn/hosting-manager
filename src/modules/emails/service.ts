@@ -75,6 +75,32 @@ async function officialQuotationAttachment(
   };
 }
 
+async function markZohoDocumentsSent(
+  invoice: Invoice,
+  includeQuotation: boolean,
+) {
+  if (invoice.provider !== ZOHO_PROVIDER || !invoice.external_invoice_id) {
+    return;
+  }
+  const zoho = getZohoBooksInvoiceProvider();
+  if (!zoho?.markInvoiceSent) {
+    throw new Error("Zoho Books invoice status updates are not configured.");
+  }
+
+  const updates: Promise<void>[] = [
+    zoho.markInvoiceSent(invoice.external_invoice_id),
+  ];
+  if (includeQuotation && invoice.external_quotation_id) {
+    if (!zoho.markQuotationSent) {
+      throw new Error(
+        "Zoho Books quotation status updates are not configured.",
+      );
+    }
+    updates.push(zoho.markQuotationSent(invoice.external_quotation_id));
+  }
+  await Promise.all(updates);
+}
+
 export function invoiceEmailAttachments(
   invoiceAttachment: EmailAttachment,
   quotationAttachment: EmailAttachment | null,
@@ -314,6 +340,8 @@ export async function sendInvoiceEmail(
     }
   }
 
+  await markZohoDocumentsSent(invoice, true);
+
   const { error } = await supabase
     .from("invoices")
     .update({ status: "SENT" })
@@ -364,6 +392,8 @@ export async function sendRenewalReminder(
   }
 
   if (input.invoice?.status === "DRAFT") {
+    await markZohoDocumentsSent(input.invoice, false);
+
     const { error } = await supabase
       .from("invoices")
       .update({ status: "SENT" })

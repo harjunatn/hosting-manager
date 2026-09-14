@@ -56,6 +56,20 @@ export default async function PaymentDetailPage({
           </dd>
         </div>
         <div>
+          <dt className="text-muted-foreground">Source</dt>
+          <dd>
+            {payment.payment_source === "ADMIN_MANUAL"
+              ? "Confirmed manually by admin"
+              : "Client receipt"}
+          </dd>
+        </div>
+        {payment.external_payment_id ? (
+          <div>
+            <dt className="text-muted-foreground">Zoho payment ID</dt>
+            <dd className="font-mono">{payment.external_payment_id}</dd>
+          </div>
+        ) : null}
+        <div>
           <dt className="text-muted-foreground">Submitted</dt>
           <dd>
             {payment.submitted_at
@@ -77,14 +91,14 @@ export default async function PaymentDetailPage({
             <iframe
               title="Payment receipt"
               src={receiptUrl}
-              className="h-[480px] w-full rounded-lg border"
+              className="h-120 w-full rounded-lg border"
             />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={receiptUrl}
               alt="Payment receipt"
-              className="max-h-[480px] rounded-lg border"
+              className="max-h-120 rounded-lg border"
             />
           )}
         </div>

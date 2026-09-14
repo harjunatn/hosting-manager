@@ -76,9 +76,10 @@ external IDs look like `MOCK-ZOHO-000001` / `MOCK-FLOWACCOUNT-000001`.
    Client for development or a Server-based Application for production.
 4. Generate an offline refresh token with these least-privilege scopes:
    `ZohoBooks.contacts.READ`, `ZohoBooks.contacts.CREATE`,
-   `ZohoBooks.settings.READ`, `ZohoBooks.invoices.CREATE`, and
-   `ZohoBooks.invoices.READ`, `ZohoBooks.estimates.CREATE`, and
-   `ZohoBooks.estimates.READ`.
+   `ZohoBooks.settings.READ`, `ZohoBooks.invoices.CREATE`,
+   `ZohoBooks.invoices.READ`, `ZohoBooks.estimates.CREATE`,
+   `ZohoBooks.estimates.READ`, `ZohoBooks.customerpayments.CREATE`, and
+   `ZohoBooks.customerpayments.READ`.
 5. Add the server-only variables from `.env.example` to `.env.local`. Set
    `ZOHO_ACCOUNTS_URL` to the account's data-center domain and then set
    `ZOHO_BOOKS_ENABLED=true`.
@@ -94,9 +95,16 @@ When an admin generates and sends SGD renewal documents, the integration:
 3. Creates a quotation, then creates a linked draft invoice from it.
 4. Saves both document identities locally and sends their official PDFs in one
    tracked Resend email.
+5. After Resend accepts the email, marks the draft quotation and invoice as
+   sent in Zoho Books before marking the local invoice as sent.
 
 `ZOHO_INVOICE_TEMPLATE_ID` and `ZOHO_ESTIMATE_TEMPLATE_ID` are optional. When
 omitted, Zoho uses the customer's or organization's default PDF templates.
+
+Sent invoices also appear in the admin Payments page. When an admin marks an
+invoice as paid, the app records a bank-transfer customer payment against the
+Zoho invoice first, then atomically creates or updates the local payment, marks
+the invoice paid, and renews the subscription period.
 
 ## Email and renewal reminders
 

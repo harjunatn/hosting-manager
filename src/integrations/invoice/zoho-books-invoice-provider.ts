@@ -3,6 +3,8 @@ import type {
   CreateInvoiceResult,
   CreateQuotationAndInvoiceResult,
   InvoiceProvider,
+  RecordInvoicePaymentInput,
+  RecordInvoicePaymentResult,
 } from "@/integrations/invoice/invoice-provider";
 
 const ZOHO_PROVIDER = "ZOHO_BOOKS";
@@ -59,12 +61,19 @@ type ZohoInvoice = {
   invoice_number: string;
   invoice_url?: string;
   reference_number?: string;
+  status?: string;
 };
 
 type ZohoEstimate = {
   estimate_id: string | number;
   estimate_number: string;
   estimate_url?: string;
+  reference_number?: string;
+  status?: string;
+};
+
+type ZohoCustomerPayment = {
+  payment_id: string | number;
   reference_number?: string;
 };
 
@@ -321,6 +330,44 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
     );
   }
 
+  private async findCustomerPaymentByReference(referenceNumber: string) {
+    const payload = await this.requestJson<{
+      customer_payments?: ZohoCustomerPayment[];
+    }>("/customerpayments", {}, { reference_number: referenceNumber });
+    return (
+      payload.customer_payments?.find(
+        (payment) => payment.reference_number === referenceNumber,
+      ) ?? null
+    );
+  }
+
+  private async ensureInvoiceCanReceivePayment(externalInvoiceId: string) {
+    const payload = await this.requestJson<{ invoice: ZohoInvoice }>(
+      `/invoices/${encodeURIComponent(externalInvoiceId)}`,
+    );
+    const status = payload.invoice.status?.toLowerCase();
+
+    if (status === "paid") {
+      throw zohoError(
+        "The invoice is already paid in Zoho Books, but no matching payment reference was found.",
+      );
+    }
+    if (status === "void") {
+      throw zohoError("A void invoice cannot receive a payment.");
+    }
+    if (status === "partially_paid") {
+      throw zohoError(
+        "The invoice is partially paid in Zoho Books. Reconcile it manually before marking it paid here.",
+      );
+    }
+    if (status === "draft") {
+      await this.requestJson(
+        `/invoices/${encodeURIComponent(externalInvoiceId)}/status/sent`,
+        { method: "POST" },
+      );
+    }
+  }
+
   async createInvoice(
     input: CreateInvoiceInput,
   ): Promise<CreateInvoiceResult> {
@@ -424,6 +471,76 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
       quotationNumber: quotation.estimate_number,
       quotationUrl: quotation.estimate_url ?? null,
     };
+  }
+
+  async recordPayment(
+    input: RecordInvoicePaymentInput,
+  ): Promise<RecordInvoicePaymentResult> {
+    const amount = Number(input.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw zohoError("Payment amount must be greater than zero.");
+    }
+    if (input.referenceNumber.length >= 50) {
+      throw zohoError("Payment reference must be fewer than 50 characters.");
+    }
+
+    const existing = await this.findCustomerPaymentByReference(
+      input.referenceNumber,
+    );
+    if (existing) {
+      return { externalPaymentId: String(existing.payment_id) };
+    }
+
+    await this.ensureInvoiceCanReceivePayment(input.externalInvoiceId);
+
+    const payload = await this.requestJson<{ payment: ZohoCustomerPayment }>(
+      "/customerpayments",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          customer_id: input.externalCustomerId,
+          payment_mode: "banktransfer",
+          amount,
+          date: input.date,
+          reference_number: input.referenceNumber,
+          description: input.description,
+          invoices: [
+            {
+              invoice_id: input.externalInvoiceId,
+              amount_applied: amount,
+            },
+          ],
+        }),
+      },
+    );
+
+    return { externalPaymentId: String(payload.payment.payment_id) };
+  }
+
+  async markInvoiceSent(externalInvoiceId: string): Promise<void> {
+    const encodedId = encodeURIComponent(externalInvoiceId);
+    const payload = await this.requestJson<{ invoice: ZohoInvoice }>(
+      `/invoices/${encodedId}`,
+    );
+    if (payload.invoice.status?.toLowerCase() !== "draft") {
+      return;
+    }
+    await this.requestJson(`/invoices/${encodedId}/status/sent`, {
+      method: "POST",
+    });
+  }
+
+  async markQuotationSent(externalQuotationId: string): Promise<void> {
+    const encodedId = encodeURIComponent(externalQuotationId);
+    const payload = await this.requestJson<{ estimate: ZohoEstimate }>(
+      `/estimates/${encodedId}`,
+    );
+    if (payload.estimate.status?.toLowerCase() !== "draft") {
+      return;
+    }
+    await this.requestJson(`/estimates/${encodedId}/status/sent`, {
+      method: "POST",
+    });
   }
 
   async getInvoicePdf(externalInvoiceId: string): Promise<ArrayBuffer> {

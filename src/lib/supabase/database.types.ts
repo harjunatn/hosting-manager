@@ -9,6 +9,7 @@ export type PaymentStatus =
   | "PAID"
   | "REJECTED";
 export type PaymentMethod = "BANK_TRANSFER";
+export type PaymentSource = "CLIENT_RECEIPT" | "ADMIN_MANUAL";
 export type BillingInterval = "YEARLY";
 export type CurrencyCode = "SGD" | "THB";
 export type EmailType =
@@ -125,9 +126,11 @@ export type Payment = {
   invoice_id: string;
   client_id: string;
   payment_method: PaymentMethod;
+  payment_source: PaymentSource;
   amount: string;
   currency: CurrencyCode;
   status: PaymentStatus;
+  external_payment_id: string | null;
   receipt_file_url: string | null;
   submitted_at: string | null;
   verified_at: string | null;
@@ -312,6 +315,10 @@ export type Database = {
       confirm_bank_transfer_payment: {
         Args: { p_payment_id: string };
         Returns: undefined;
+      };
+      mark_invoice_paid: {
+        Args: { p_invoice_id: string; p_external_payment_id: string };
+        Returns: string;
       };
       reject_bank_transfer_payment: {
         Args: { p_payment_id: string; p_reason: string };
