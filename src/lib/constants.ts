@@ -1,4 +1,3 @@
-export const INVOICE_DUE_DAYS = 14;
 export const RECEIPT_MAX_BYTES = 5 * 1024 * 1024;
 export const RECEIPT_BUCKET = "payment-receipts";
 export const EXPIRING_WITHIN_DAYS = 30;

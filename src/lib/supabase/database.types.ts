@@ -11,6 +11,19 @@ export type PaymentStatus =
 export type PaymentMethod = "BANK_TRANSFER";
 export type BillingInterval = "YEARLY";
 export type CurrencyCode = "SGD" | "THB";
+export type EmailType =
+  | "INVOICE"
+  | "RENEWAL_REMINDER"
+  | "DEACTIVATION_NOTICE";
+export type EmailDeliveryStatus =
+  | "QUEUED"
+  | "SENT"
+  | "DELIVERED"
+  | "OPENED"
+  | "BOUNCED"
+  | "FAILED"
+  | "COMPLAINED"
+  | "SUPPRESSED";
 
 export type Profile = {
   id: string;
@@ -27,6 +40,7 @@ export type Client = {
   billing_address: string | null;
   country: string | null;
   default_currency: CurrencyCode;
+  zoho_contact_id: string | null;
   status: ClientStatus;
   remarks: string | null;
   created_at: string;
@@ -81,6 +95,9 @@ export type Invoice = {
   invoice_number: string;
   provider: string;
   external_invoice_id: string | null;
+  external_quotation_id: string | null;
+  quotation_number: string | null;
+  quotation_url: string | null;
   issue_date: string;
   due_date: string;
   currency: CurrencyCode;
@@ -88,6 +105,7 @@ export type Invoice = {
   total: string;
   status: InvoiceStatus;
   invoice_url: string | null;
+  billing_period_end: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -117,6 +135,37 @@ export type Payment = {
   rejection_reason: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type EmailDelivery = {
+  id: string;
+  subscription_id: string;
+  invoice_id: string | null;
+  client_contact_id: string | null;
+  email_type: EmailType;
+  milestone_days: number | null;
+  period_end: string;
+  recipient_email: string;
+  delivery_email: string;
+  subject: string;
+  provider: string;
+  provider_message_id: string | null;
+  status: EmailDeliveryStatus;
+  error_message: string | null;
+  event_at: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  opened_at: string | null;
+  bounced_at: string | null;
+  failed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BillingDocumentLock = {
+  subscription_id: string;
+  period_end: string;
+  created_at: string;
 };
 
 export type Database = {
@@ -212,6 +261,28 @@ export type Database = {
         Insert: Partial<Payment> &
           Pick<Payment, "invoice_id" | "client_id" | "amount" | "currency">;
         Update: Partial<Payment>;
+        Relationships: [];
+      };
+      email_deliveries: {
+        Row: EmailDelivery;
+        Insert: Partial<EmailDelivery> &
+          Pick<
+            EmailDelivery,
+            | "subscription_id"
+            | "email_type"
+            | "period_end"
+            | "recipient_email"
+            | "delivery_email"
+            | "subject"
+          >;
+        Update: Partial<EmailDelivery>;
+        Relationships: [];
+      };
+      billing_document_locks: {
+        Row: BillingDocumentLock;
+        Insert: Pick<BillingDocumentLock, "subscription_id" | "period_end"> &
+          Partial<Pick<BillingDocumentLock, "created_at">>;
+        Update: never;
         Relationships: [];
       };
       audit_logs: {

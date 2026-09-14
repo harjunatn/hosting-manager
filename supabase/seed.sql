@@ -1,5 +1,6 @@
 -- Seed auth users, spreadsheet-inspired clients, and a THB example.
 -- Passwords for every seed login: password123
+-- Safe to re-run: existing rows are skipped / upserted.
 
 create extension if not exists pgcrypto with schema extensions;
 
@@ -36,7 +37,8 @@ insert into auth.users (
   '',
   '',
   ''
-);
+)
+on conflict (id) do nothing;
 
 insert into auth.identities (
   id,
@@ -56,7 +58,8 @@ insert into auth.identities (
   now(),
   now(),
   now()
-);
+)
+on conflict (id) do nothing;
 
 -- JW Marriott portal user
 insert into auth.users (
@@ -91,7 +94,8 @@ insert into auth.users (
   '',
   '',
   ''
-);
+)
+on conflict (id) do nothing;
 
 insert into auth.identities (
   id,
@@ -111,7 +115,8 @@ insert into auth.identities (
   now(),
   now(),
   now()
-);
+)
+on conflict (id) do nothing;
 
 -- Morganfield's portal user
 insert into auth.users (
@@ -146,7 +151,8 @@ insert into auth.users (
   '',
   '',
   ''
-);
+)
+on conflict (id) do nothing;
 
 insert into auth.identities (
   id,
@@ -166,7 +172,8 @@ insert into auth.identities (
   now(),
   now(),
   now()
-);
+)
+on conflict (id) do nothing;
 
 -- THB portal user
 insert into auth.users (
@@ -201,7 +208,8 @@ insert into auth.users (
   '',
   '',
   ''
-);
+)
+on conflict (id) do nothing;
 
 insert into auth.identities (
   id,
@@ -221,13 +229,17 @@ insert into auth.identities (
   now(),
   now(),
   now()
-);
+)
+on conflict (id) do nothing;
 
 insert into public.profiles (id, role, display_name) values
   ('00000000-0000-0000-0000-000000000001', 'ADMIN', 'Admin'),
   ('00000000-0000-0000-0000-000000000002', 'CLIENT', 'Shiying'),
   ('00000000-0000-0000-0000-000000000003', 'CLIENT', 'Bran'),
-  ('00000000-0000-0000-0000-000000000004', 'CLIENT', 'Somchai');
+  ('00000000-0000-0000-0000-000000000004', 'CLIENT', 'Somchai')
+on conflict (id) do update
+set role = excluded.role,
+    display_name = excluded.display_name;
 
 insert into public.clients (
   id, business_name, billing_name, country, default_currency, status
@@ -255,7 +267,8 @@ insert into public.clients (
     'Thailand',
     'THB',
     'ACTIVE'
-  );
+  )
+on conflict (id) do nothing;
 
 insert into public.client_contacts (
   client_id, name, email, phone, is_primary, receive_invoice, receive_reminder
@@ -291,7 +304,8 @@ insert into public.client_contacts (
 insert into public.client_users (user_id, client_id) values
   ('00000000-0000-0000-0000-000000000002', '10000000-0000-0000-0000-000000000001'),
   ('00000000-0000-0000-0000-000000000003', '10000000-0000-0000-0000-000000000002'),
-  ('00000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000003');
+  ('00000000-0000-0000-0000-000000000004', '10000000-0000-0000-0000-000000000003')
+on conflict do nothing;
 
 insert into public.hosting_services (
   id, client_id, name, hosting_type, project_url, status
@@ -319,7 +333,8 @@ insert into public.hosting_services (
     'GoThru',
     'https://360.example.com/bangkok',
     'ACTIVE'
-  );
+  )
+on conflict (id) do nothing;
 
 insert into public.subscriptions (
   id,
@@ -372,4 +387,5 @@ insert into public.subscriptions (
     '2025-01-01',
     '2025-12-31',
     'ACTIVE'
-  );
+  )
+on conflict (id) do nothing;

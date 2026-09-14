@@ -23,7 +23,7 @@ export function GenerateInvoiceButton({
     >
       {error ? <p className="mb-2 text-sm text-destructive">{error}</p> : null}
       <Button type="submit" size="sm" data-testid="generate-invoice">
-        Generate invoice
+        Generate & send documents
       </Button>
     </form>
   );

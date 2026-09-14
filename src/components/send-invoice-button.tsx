@@ -19,7 +19,7 @@ export function SendInvoiceButton({ invoiceId }: { invoiceId: string }) {
     >
       {error ? <p className="mb-2 text-sm text-destructive">{error}</p> : null}
       <Button type="submit" data-testid="send-invoice">
-        Send invoice
+        Send quotation & invoice
       </Button>
     </form>
   );

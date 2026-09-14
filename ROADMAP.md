@@ -12,9 +12,9 @@ Where this app stands against the original brief, and the phases needed before i
 | Client-facing portal: hosting details + expiry | Done | `/portal` shows hosting, expiry, renewals paid, invoices |
 | Yearly billing cycle | Done | One subscription per hosting; expiry extends on confirmed payment |
 | Bank transfer payment | Done | Client uploads receipt, admin verifies, renewal is atomic in one RPC |
-| Invoice generation from our system | Partial | Internal numbering `INV-YYYY-NNNN` works; external provider is still `MockInvoiceProvider` |
-| Send invoice emails automatically | **Not started** | "Send invoice" only flips status to `SENT`. No email is delivered |
-| Send reminders automatically | **Not started** | No scheduler. `EXPIRING` / `OVERDUE` are computed at read time only |
+| Invoice generation from our system | Partial | SGD uses Zoho Books when configured; THB still uses `MockInvoiceProvider` |
+| Send invoice emails automatically | Configuration pending | Resend delivery, Zoho PDF attachments, and event tracking are implemented; domain/webhook setup remains |
+| Send reminders automatically | Configuration pending | Daily Supabase Cron and 60/30/15/3/1/-1 catch-up schedule are implemented; Vault secrets and production activation remain |
 | Client can add a payment method | **Not started** | No stored payment method, no card/PayNow/GIRO, no auto-charge |
 
 ## Is it enough for an MVP?
@@ -42,7 +42,7 @@ Recommendation: run Phases 1–3 before announcing the portal to any client.
 
 ## Phase 2 — Transactional email
 
-- Pick a provider (Resend or Postmark; both are simple from a Next.js server action).
+- Resend is integrated as the transactional provider.
 - Wire real sends into the existing flows: invoice sent, receipt received, payment confirmed, payment rejected with reason.
 - Attach or link the invoice. The print view at `/admin/invoices/[id]/print` is the basis for a PDF.
 - Respect the recipient flags already in the schema: `client_contacts.receive_invoice` and `receive_reminder`.
@@ -55,8 +55,8 @@ Recommendation: run Phases 1–3 before announcing the portal to any client.
 
 The spreadsheet had a `NEXT REMINDER` column. That logic needs to live in code.
 
-- Add a scheduled job (Supabase `pg_cron` plus a database function, or a Vercel cron hitting a protected route).
-- Schedule: 60 / 30 / 7 days before expiry, on expiry, then overdue follow-ups.
+- Add a scheduled job (Supabase `pg_cron` + `pg_net` calling the protected Next.js route; Vault holds `app_base_url` and `cron_secret`).
+- Schedule: 60 / 30 / 15 / 3 / 1 days before expiry, then a notice one day after expiry.
 - Persist which reminder was sent for which subscription and period so a re-run cannot double-send. This is the one part of the system where idempotency matters most.
 - Give admins a way to see what is queued, and to suppress reminders for a specific client.
 
@@ -64,7 +64,7 @@ The spreadsheet had a `NEXT REMINDER` column. That logic needs to live in code.
 
 ## Phase 4 — Real invoice providers
 
-`getInvoiceProvider()` already branches on currency and returns mocks. Replace them.
+`getInvoiceProvider()` branches on currency. Zoho Books is implemented for SGD; FlowAccount remains to be implemented.
 
 - SGD → Zoho Books, THB → FlowAccount.
 - Implement the existing `InvoiceProvider` interface, store the real `external_invoice_id` and `invoice_url`.

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { InvoiceDocument } from "@/components/invoice-document";
 import { PaymentReceiptForm } from "@/components/payment-receipt-form";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { ZOHO_PROVIDER } from "@/integrations/invoice/zoho-books-invoice-provider";
 import { getBankDetails } from "@/lib/bank";
 import { requireClient } from "@/modules/auth/session";
 import {
@@ -39,6 +41,21 @@ export default async function PortalInvoiceDetailPage({
 
   return (
     <div className="space-y-8">
+      {invoice.provider === ZOHO_PROVIDER && invoice.external_invoice_id ? (
+        <Button
+          variant="outline"
+          nativeButton={false}
+          render={
+            <a
+              href={`/api/invoices/${invoice.id}/pdf`}
+              target="_blank"
+              rel="noreferrer"
+            />
+          }
+        >
+          Download official invoice PDF
+        </Button>
+      ) : null}
       <InvoiceDocument
         invoice={invoice}
         items={items}

@@ -20,16 +20,37 @@ export async function loginAction(
   }
 
   const supabase = await createServerSupabaseClient();
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data: signInData, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
 
-  if (error) {
+  if (error || !signInData.user?.email) {
     return { error: "Invalid email or password." };
   }
 
-  redirect("/");
+  // Use the same client + signed-in user id. A fresh getCurrentUser() can miss
+  // the just-written session cookies in this same Server Action request.
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role, display_name")
+    .eq("id", signInData.user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    await supabase.auth.signOut();
+    return { error: `Could not load profile: ${profileError.message}` };
+  }
+
+  if (!profile) {
+    await supabase.auth.signOut();
+    return {
+      error: `Signed in as ${signInData.user.email} (${signInData.user.id}), but no profiles row matches that id. Check you are seeding the same Supabase project as NEXT_PUBLIC_SUPABASE_URL.`,
+    };
+  }
+
+  revalidatePath("/", "layout");
+  redirect(profile.role === "ADMIN" ? "/admin" : "/portal");
 }
 
 export async function logoutAction() {
