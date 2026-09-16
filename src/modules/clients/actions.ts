@@ -14,7 +14,6 @@ import {
   checkboxValue,
 } from "@/modules/clients/schemas";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { yearlyExpiryFromStart } from "@/modules/subscriptions/status";
 
 export type ActionState = { error: string } | null;
 
@@ -244,6 +243,7 @@ export async function createSubscriptionAction(
     unit_price: formData.get("unit_price"),
     currency: formData.get("currency"),
     start_date: String(formData.get("start_date") ?? ""),
+    current_period_end: String(formData.get("current_period_end") ?? ""),
   });
   if (!parsed.success) {
     return { error: firstIssue(parsed.error) };
@@ -277,7 +277,6 @@ export async function createSubscriptionAction(
     };
   }
 
-  const expiry = yearlyExpiryFromStart(parsed.data.start_date);
   const { data, error } = await supabase
     .from("subscriptions")
     .insert({
@@ -289,7 +288,7 @@ export async function createSubscriptionAction(
       currency: parsed.data.currency,
       start_date: parsed.data.start_date,
       current_period_start: parsed.data.start_date,
-      current_period_end: expiry,
+      current_period_end: parsed.data.current_period_end,
       status: "ACTIVE",
     })
     .select("id")

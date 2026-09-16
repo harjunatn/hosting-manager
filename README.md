@@ -157,7 +157,8 @@ Use the same value as the app's `CRON_SECRET`. The scheduled job
 `/api/cron/renewal-reminders` with `Authorization: Bearer <CRON_SECRET>`.
 
 The route processes the most recently due unsent milestone among
-60/30/15/3/1-day pre-expiry reminders and the one-day post-expiry notice.
+60/30/15-day reminders, daily reminders for the final 7 days before expiry,
+and the one-day post-expiry notice.
 Catch-up after downtime sends the current due reminder without replaying older
 ones. Existing delivery records and database unique indexes prevent duplicate
 sends.

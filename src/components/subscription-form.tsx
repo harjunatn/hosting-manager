@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,6 @@ import {
   createSubscriptionAction,
   type ActionState,
 } from "@/modules/clients/actions";
-import { yearlyExpiryFromStart } from "@/modules/subscriptions/status";
 
 export function SubscriptionForm({
   clientId,
@@ -26,11 +25,6 @@ export function SubscriptionForm({
   const [state, formAction] = useActionState<ActionState, FormData>(
     createSubscriptionAction.bind(null, clientId),
     null,
-  );
-  const [startDate, setStartDate] = useState("");
-  const expiry = useMemo(
-    () => (startDate ? yearlyExpiryFromStart(startDate) : null),
-    [startDate],
   );
 
   return (
@@ -92,24 +86,24 @@ export function SubscriptionForm({
           type="date"
           required
           data-testid="subscription-start"
-          value={startDate}
-          onChange={(event) => setStartDate(event.target.value)}
         />
         <p className="text-xs text-muted-foreground">
-          First billing period starts on this date. Expiry is set automatically to
-          one year later.
+          First billing period starts on this date.
         </p>
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="expiry_preview">Expiry date</Label>
+        <Label htmlFor="current_period_end">Expiry date</Label>
         <Input
-          id="expiry_preview"
+          id="current_period_end"
+          name="current_period_end"
           type="date"
-          readOnly
-          tabIndex={-1}
-          value={expiry ?? ""}
-          className="bg-muted/50"
+          required
+          data-testid="subscription-expiry"
         />
+        <p className="text-xs text-muted-foreground">
+          Choose the current period end date. Reminder milestones are based on
+          this date.
+        </p>
       </div>
       <SubmitButton data-testid="save-subscription">Create subscription</SubmitButton>
     </form>

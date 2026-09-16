@@ -74,6 +74,22 @@ export default async function SubscriptionsPage({
               const service = hosting.find(
                 (item) => item.id === subscription.hosting_service_id,
               );
+              const periodInvoice =
+                invoices.find(
+                  (invoice) =>
+                    invoice.subscription_id === subscription.id &&
+                    invoice.billing_period_end ===
+                      subscription.current_period_end &&
+                    invoice.status !== "VOID",
+                ) ??
+                invoices.find(
+                  (invoice) =>
+                    invoice.subscription_id === subscription.id &&
+                    invoice.billing_period_end === null &&
+                    (invoice.status === "DRAFT" || invoice.status === "SENT"),
+                ) ??
+                null;
+
               return (
                 <TableRow key={subscription.id}>
                   <TableCell className="font-medium">
@@ -101,7 +117,18 @@ export default async function SubscriptionsPage({
                     />
                   </TableCell>
                   <TableCell>
-                    <GenerateInvoiceButton subscriptionId={subscription.id} />
+                    <GenerateInvoiceButton
+                      subscriptionId={subscription.id}
+                      existingInvoice={
+                        periodInvoice
+                          ? {
+                              id: periodInvoice.id,
+                              invoice_number: periodInvoice.invoice_number,
+                              status: periodInvoice.status,
+                            }
+                          : null
+                      }
+                    />
                   </TableCell>
                 </TableRow>
               );

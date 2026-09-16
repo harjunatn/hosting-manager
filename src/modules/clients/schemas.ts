@@ -27,16 +27,22 @@ export const hostingSchema = z.object({
   remarks: z.string().trim().optional(),
 });
 
-export const subscriptionSchema = z.object({
-  hosting_service_id: z.string().trim().min(1, "Select a hosting service"),
-  quantity: z.coerce.number().int().positive(),
-  unit_price: z
-    .string()
-    .trim()
-    .regex(/^\d+(\.\d{1,2})?$/, "Enter a valid amount"),
-  currency: z.enum(["SGD", "THB"]),
-  start_date: z.string().date("Enter a start date"),
-});
+export const subscriptionSchema = z
+  .object({
+    hosting_service_id: z.string().trim().min(1, "Select a hosting service"),
+    quantity: z.coerce.number().int().positive(),
+    unit_price: z
+      .string()
+      .trim()
+      .regex(/^\d+(\.\d{1,2})?$/, "Enter a valid amount"),
+    currency: z.enum(["SGD", "THB"]),
+    start_date: z.string().date("Enter a start date"),
+    current_period_end: z.string().date("Enter an expiry date"),
+  })
+  .refine((value) => value.current_period_end >= value.start_date, {
+    message: "Expiry date must be on or after the start date",
+    path: ["current_period_end"],
+  });
 
 export const rejectPaymentSchema = z.object({
   reason: z.string().trim().min(1, "Rejection reason is required"),

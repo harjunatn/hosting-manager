@@ -1,9 +1,4 @@
-import {
-  addDays,
-  differenceInCalendarDays,
-  parseISO,
-  subDays,
-} from "date-fns";
+import { addDays, differenceInCalendarDays, parseISO, subDays } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/database.types";
@@ -11,7 +6,7 @@ import { sendRenewalReminder } from "@/modules/emails/service";
 import { createOrGetInvoiceForSubscription } from "@/modules/invoices/service";
 import { toDateOnlyString } from "@/modules/subscriptions/status";
 
-export const REMINDER_MILESTONES = [60, 30, 15, 3, 1, -1] as const;
+export const REMINDER_MILESTONES = [7, 6, 5, 4, 3, 2, 1, -1] as const;
 
 export type ReminderRunResult = {
   processed: number;
