@@ -72,15 +72,18 @@ external IDs look like `MOCK-ZOHO-000001` / `MOCK-FLOWACCOUNT-000001`.
    mapping.
 2. In Zoho Books, create an active item named `Hosting Renewal`. The name can
    be changed through `ZOHO_HOSTING_ITEM_NAME`.
-3. In the [Zoho API Console](https://api-console.zoho.com/), create a Self
+3. Enable multi-currency transactions in Zoho Books and add every billing
+   currency used by the app, including SGD. The integration resolves the
+   corresponding Zoho currency ID before creating contacts and documents.
+4. In the [Zoho API Console](https://api-console.zoho.com/), create a Self
    Client for development or a Server-based Application for production.
-4. Generate an offline refresh token with these least-privilege scopes:
+5. Generate an offline refresh token with these least-privilege scopes:
    `ZohoBooks.contacts.READ`, `ZohoBooks.contacts.CREATE`,
    `ZohoBooks.settings.READ`, `ZohoBooks.invoices.CREATE`,
    `ZohoBooks.invoices.READ`, `ZohoBooks.estimates.CREATE`,
    `ZohoBooks.estimates.READ`, `ZohoBooks.customerpayments.CREATE`, and
    `ZohoBooks.customerpayments.READ`.
-5. Add the server-only variables from `.env.example` to `.env.local`. Set
+6. Add the server-only variables from `.env.example` to `.env.local`. Set
    `ZOHO_ACCOUNTS_URL` to the account's data-center domain and then set
    `ZOHO_BOOKS_ENABLED=true`.
 

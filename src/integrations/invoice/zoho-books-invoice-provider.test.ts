@@ -65,6 +65,19 @@ describe("ZohoBooksInvoiceProvider", () => {
           items: [{ item_id: "item-id", name: "Hosting Renewal" }],
         }),
       )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          currencies: [
+            {
+              currency_id: "sgd-currency-id",
+              currency_code: "SGD",
+              exchange_rate: 0.001,
+              is_base_currency: false,
+            },
+          ],
+        }),
+      )
       .mockResolvedValueOnce(Response.json({ code: 0, contacts: [] }))
       .mockResolvedValueOnce(
         Response.json({
@@ -72,6 +85,8 @@ describe("ZohoBooksInvoiceProvider", () => {
           contact: {
             contact_id: "contact-id",
             contact_name: "Anderson Secondary School",
+            currency_id: "sgd-currency-id",
+            currency_code: "SGD",
           },
         }),
       )
@@ -82,6 +97,8 @@ describe("ZohoBooksInvoiceProvider", () => {
             invoice_id: "invoice-id",
             invoice_number: "TRM-006190",
             invoice_url: "https://books.zoho.com/invoice/invoice-id",
+            currency_id: "sgd-currency-id",
+            currency_code: "SGD",
           },
         }),
       );
@@ -95,7 +112,18 @@ describe("ZohoBooksInvoiceProvider", () => {
       invoiceUrl: "https://books.zoho.com/invoice/invoice-id",
     });
 
-    const createInvoiceRequest = fetchMock.mock.calls[4];
+    expect(fetchMock.mock.calls[2]?.[0]).toContain(
+      "/books/v3/settings/currencies?organization_id=organization-id",
+    );
+    const createContactRequest = fetchMock.mock.calls[4];
+    expect(
+      JSON.parse(String((createContactRequest?.[1] as RequestInit).body)),
+    ).toMatchObject({
+      contact_name: "Anderson Secondary School",
+      company_name: "Anderson Secondary School",
+      currency_id: "sgd-currency-id",
+    });
+    const createInvoiceRequest = fetchMock.mock.calls[5];
     expect(createInvoiceRequest?.[0]).toContain(
       "/books/v3/invoices?organization_id=organization-id",
     );
@@ -104,6 +132,8 @@ describe("ZohoBooksInvoiceProvider", () => {
     );
     expect(body).toMatchObject({
       customer_id: "contact-id",
+      currency_id: "sgd-currency-id",
+      exchange_rate: 0.001,
       date: "2026-09-01",
       due_date: "2026-10-31",
       payment_terms: 60,
@@ -117,6 +147,43 @@ describe("ZohoBooksInvoiceProvider", () => {
         },
       ],
     });
+  });
+
+  it("fails when the requested currency is not configured in Zoho Books", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        Response.json({
+          access_token: "access-token",
+          api_domain: "https://www.zohoapis.com",
+          expires_in: 3600,
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          items: [{ item_id: "item-id", name: "Hosting Renewal" }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          currencies: [
+            {
+              currency_id: "idr-currency-id",
+              currency_code: "IDR",
+              exchange_rate: 1,
+              is_base_currency: true,
+            },
+          ],
+        }),
+      );
+    const provider = new ZohoBooksInvoiceProvider(config, fetchMock);
+
+    await expect(provider.createInvoice(invoiceInput)).rejects.toThrow(
+      'Zoho Books: Currency "SGD" was not found.',
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("downloads the official PDF using the cached access token", async () => {
@@ -159,6 +226,19 @@ describe("ZohoBooksInvoiceProvider", () => {
           items: [{ item_id: "item-id", name: "Hosting Renewal" }],
         }),
       )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
+          currencies: [
+            {
+              currency_id: "sgd-currency-id",
+              currency_code: "SGD",
+              exchange_rate: 0.001,
+              is_base_currency: false,
+            },
+          ],
+        }),
+      )
       .mockResolvedValueOnce(Response.json({ code: 0, estimates: [] }))
       .mockResolvedValueOnce(
         Response.json({
@@ -167,6 +247,8 @@ describe("ZohoBooksInvoiceProvider", () => {
             estimate_id: "estimate-id",
             estimate_number: "EST-00042",
             estimate_url: "https://books.zoho.com/estimate/estimate-id",
+            currency_id: "sgd-currency-id",
+            currency_code: "SGD",
           },
         }),
       )
@@ -178,6 +260,8 @@ describe("ZohoBooksInvoiceProvider", () => {
             invoice_id: "invoice-id",
             invoice_number: "TRM-006190",
             invoice_url: "https://books.zoho.com/invoice/invoice-id",
+            currency_id: "sgd-currency-id",
+            currency_code: "SGD",
           },
         }),
       );
@@ -200,19 +284,23 @@ describe("ZohoBooksInvoiceProvider", () => {
     });
 
     const estimateBody = JSON.parse(
-      String((fetchMock.mock.calls[3]?.[1] as RequestInit).body),
+      String((fetchMock.mock.calls[4]?.[1] as RequestInit).body),
     );
     expect(estimateBody).toMatchObject({
       customer_id: "contact-id",
+      currency_id: "sgd-currency-id",
+      exchange_rate: 0.001,
       reference_number:
         "hosting:subscription-id:2026-10-31:quotation",
       expiry_date: "2026-10-31",
     });
     const invoiceBody = JSON.parse(
-      String((fetchMock.mock.calls[5]?.[1] as RequestInit).body),
+      String((fetchMock.mock.calls[6]?.[1] as RequestInit).body),
     );
     expect(invoiceBody).toMatchObject({
       customer_id: "contact-id",
+      currency_id: "sgd-currency-id",
+      exchange_rate: 0.001,
       reference_number: "hosting:subscription-id:2026-10-31",
       invoiced_estimate_id: "estimate-id",
     });
@@ -237,12 +325,27 @@ describe("ZohoBooksInvoiceProvider", () => {
       .mockResolvedValueOnce(
         Response.json({
           code: 0,
+          currencies: [
+            {
+              currency_id: "sgd-currency-id",
+              currency_code: "SGD",
+              exchange_rate: 0.001,
+              is_base_currency: false,
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          code: 0,
           estimates: [
             {
               estimate_id: "estimate-id",
               estimate_number: "EST-00042",
               reference_number:
                 "hosting:subscription-id:2026-10-31:quotation",
+              currency_id: "sgd-currency-id",
+              currency_code: "SGD",
             },
           ],
         }),
@@ -255,6 +358,8 @@ describe("ZohoBooksInvoiceProvider", () => {
               invoice_id: "invoice-id",
               invoice_number: "TRM-006190",
               reference_number: "hosting:subscription-id:2026-10-31",
+              currency_id: "sgd-currency-id",
+              currency_code: "SGD",
             },
           ],
         }),
@@ -266,8 +371,8 @@ describe("ZohoBooksInvoiceProvider", () => {
       externalCustomerId: "contact-id",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
-    expect(fetchMock.mock.calls.slice(2).every((call) => {
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock.mock.calls.slice(3).every((call) => {
       const method = (call[1] as RequestInit | undefined)?.method;
       return !method || method === "GET";
     })).toBe(true);

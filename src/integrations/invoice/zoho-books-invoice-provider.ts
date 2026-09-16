@@ -50,10 +50,19 @@ type ZohoItem = {
   name: string;
 };
 
+type ZohoCurrency = {
+  currency_id: string | number;
+  currency_code: string;
+  exchange_rate?: number;
+  is_base_currency?: boolean;
+};
+
 type ZohoContact = {
   contact_id: string | number;
   contact_name: string;
   company_name?: string;
+  currency_id?: string | number;
+  currency_code?: string;
 };
 
 type ZohoInvoice = {
@@ -62,6 +71,8 @@ type ZohoInvoice = {
   invoice_url?: string;
   reference_number?: string;
   status?: string;
+  currency_id?: string | number;
+  currency_code?: string;
 };
 
 type ZohoEstimate = {
@@ -70,6 +81,8 @@ type ZohoEstimate = {
   estimate_url?: string;
   reference_number?: string;
   status?: string;
+  currency_id?: string | number;
+  currency_code?: string;
 };
 
 type ZohoCustomerPayment = {
@@ -122,6 +135,7 @@ function zohoError(message: string, status?: number) {
 export class ZohoBooksInvoiceProvider implements InvoiceProvider {
   private accessToken: AccessToken | null = null;
   private accessTokenRefresh: Promise<AccessToken> | null = null;
+  private currencies: ZohoCurrency[] | null = null;
 
   constructor(
     private readonly config: ZohoBooksConfig,
@@ -227,7 +241,54 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
     return String(item.item_id);
   }
 
-  private async resolveContactId(input: CreateInvoiceInput) {
+  private async resolveCurrency(currencyCode: CreateInvoiceInput["currency"]) {
+    if (!this.currencies) {
+      const payload = await this.requestJson<{ currencies?: ZohoCurrency[] }>(
+        "/settings/currencies",
+      );
+      this.currencies = payload.currencies ?? [];
+    }
+
+    const currency = this.currencies.find(
+      ({ currency_code }) =>
+        currency_code.trim().toUpperCase() === currencyCode.toUpperCase(),
+    );
+    if (!currency) {
+      throw zohoError(
+        `Currency "${currencyCode}" was not found. Add it in Zoho Books Settings > Currencies.`,
+      );
+    }
+    return currency;
+  }
+
+  private transactionCurrency(currency: ZohoCurrency) {
+    const exchangeRate = Number(currency.exchange_rate);
+    return {
+      currency_id: String(currency.currency_id),
+      ...(currency.is_base_currency ||
+      !Number.isFinite(exchangeRate) ||
+      exchangeRate <= 0
+        ? {}
+        : { exchange_rate: exchangeRate }),
+    };
+  }
+
+  private assertDocumentCurrency(
+    label: "contact" | "invoice" | "quotation",
+    actualCurrencyCode: string | undefined,
+    expectedCurrencyCode: CreateInvoiceInput["currency"],
+  ) {
+    if (actualCurrencyCode?.toUpperCase() !== expectedCurrencyCode) {
+      throw zohoError(
+        `The ${label} was created in ${actualCurrencyCode || "an unknown currency"} instead of ${expectedCurrencyCode}.`,
+      );
+    }
+  }
+
+  private async resolveContactId(
+    input: CreateInvoiceInput,
+    currency: ZohoCurrency,
+  ) {
     if (input.externalCustomerId) {
       return input.externalCustomerId;
     }
@@ -268,7 +329,7 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
           company_name: input.clientName,
           contact_type: "customer",
           customer_sub_type: "business",
-          currency_code: input.currency,
+          currency_id: String(currency.currency_id),
           billing_address:
             input.billingAddress || input.country
               ? {
@@ -281,15 +342,21 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
         }),
       },
     );
+    this.assertDocumentCurrency(
+      "contact",
+      created.contact.currency_code,
+      input.currency,
+    );
     return String(created.contact.contact_id);
   }
 
   private async resolveDocumentContext(input: CreateInvoiceInput) {
-    const [itemId, contactId] = await Promise.all([
+    const [itemId, currency] = await Promise.all([
       this.resolveItemId(),
-      this.resolveContactId(input),
+      this.resolveCurrency(input.currency),
     ]);
-    return { itemId, contactId };
+    const contactId = await this.resolveContactId(input, currency);
+    return { itemId, contactId, currency };
   }
 
   private lineItems(input: CreateInvoiceInput, itemId: string) {
@@ -371,7 +438,8 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
   async createInvoice(
     input: CreateInvoiceInput,
   ): Promise<CreateInvoiceResult> {
-    const { itemId, contactId } = await this.resolveDocumentContext(input);
+    const { itemId, contactId, currency } =
+      await this.resolveDocumentContext(input);
     const paymentTerms = Math.max(
       0,
       Math.round(
@@ -386,6 +454,7 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
         method: "POST",
         body: JSON.stringify({
           customer_id: contactId,
+          ...this.transactionCurrency(currency),
           date: input.issueDate,
           due_date: input.dueDate,
           payment_terms: paymentTerms,
@@ -395,6 +464,11 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
           line_items: this.lineItems(input, itemId),
         }),
       },
+    );
+    this.assertDocumentCurrency(
+      "invoice",
+      payload.invoice.currency_code,
+      input.currency,
     );
 
     return {
@@ -409,7 +483,8 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
   async createQuotationAndInvoice(
     input: CreateInvoiceInput,
   ): Promise<CreateQuotationAndInvoiceResult> {
-    const { itemId, contactId } = await this.resolveDocumentContext(input);
+    const { itemId, contactId, currency } =
+      await this.resolveDocumentContext(input);
     const quotationReference = `${input.referenceNumber}:quotation`;
 
     let quotation = await this.findEstimateByReference(quotationReference);
@@ -420,6 +495,7 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
           method: "POST",
           body: JSON.stringify({
             customer_id: contactId,
+            ...this.transactionCurrency(currency),
             date: input.issueDate,
             expiry_date: input.dueDate,
             reference_number: quotationReference,
@@ -430,6 +506,11 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
       );
       quotation = payload.estimate;
     }
+    this.assertDocumentCurrency(
+      "quotation",
+      quotation.currency_code,
+      input.currency,
+    );
 
     let invoice = await this.findInvoiceByReference(input.referenceNumber);
     if (!invoice) {
@@ -447,6 +528,7 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
           method: "POST",
           body: JSON.stringify({
             customer_id: contactId,
+            ...this.transactionCurrency(currency),
             date: input.issueDate,
             due_date: input.dueDate,
             payment_terms: paymentTerms,
@@ -460,6 +542,11 @@ export class ZohoBooksInvoiceProvider implements InvoiceProvider {
       );
       invoice = payload.invoice;
     }
+    this.assertDocumentCurrency(
+      "invoice",
+      invoice.currency_code,
+      input.currency,
+    );
 
     return {
       provider: ZOHO_PROVIDER,
